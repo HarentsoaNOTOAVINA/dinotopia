@@ -9,6 +9,8 @@ use PHPUnit\Framework\ExpectationFailedException;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpClient\HttpClient;
+use Symfony\Component\HttpClient\MockHttpClient;
+use Symfony\Component\HttpClient\Response\MockResponse;
 use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
 use Symfony\Contracts\HttpClient\Exception\DecodingExceptionInterface;
 use Symfony\Contracts\HttpClient\Exception\RedirectionExceptionInterface;
@@ -66,30 +68,21 @@ class GitHubServiceTest extends TestCase
 
     /**
      * @param HealthStatus $expectedStatus
-     * @param string $dinoName
      * @dataProvider dinoNameProvider
      * @return void
      */
-    public function testExceptionThrownWithUnknownLabel(HealthStatus $expectedStatus, string $dinoName): void
+    public function testExceptionThrownWithUnknownLabel(HealthStatus $expectedStatus): void
     {
         $mockLogger = $this->createMock(LoggerInterface::class);
-        $mockHttpClient = $this->createMock(HttpClientInterface::class);
-        $mockResponse = $this->createMock(ResponseInterface::class);
 
-        $mockResponse
-            ->method('toArray')
-            ->willReturn([
+        $mockResponse = new MockResponse(json_encode([
                 [
                     'title' => 'Maverick',
                     'labels' => [['name' => 'Status: Drowsy']],
                 ],
-            ]);
+            ]));
 
-        $mockHttpClient
-            ->expects(self::once())
-            ->method('request')
-            ->with('GET', 'https://api.github.com/repos/SymfonyCasts/dino-park/issues')
-            ->willReturn($mockResponse);
+        $mockHttpClient = new MockHttpClient($mockResponse);
 
         $service = new GithubService($mockHttpClient, $mockLogger);
 
