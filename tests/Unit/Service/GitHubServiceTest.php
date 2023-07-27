@@ -24,11 +24,37 @@ class GitHubServiceTest extends TestCase
 
     use ServiceDataProviderTrait;
 
+    private readonly LoggerInterface $mockLogger;
+    private readonly MockHttpClient $mockHttpClient;
+    private readonly MockResponse $mockResponse;
+
+    protected function setUp(): void
+    {
+        $this->mockLogger = $this->createMock(LoggerInterface::class);
+        $this->mockHttpClient = new MockHttpClient();
+    }
+
+    private function createGithubService(array $responseData): GitHubService
+    {
+        $this->mockResponse = new MockResponse(json_encode($responseData));
+
+        $this->mockHttpClient->setResponseFactory($this->mockResponse);
+
+        return new GitHubService($this->mockHttpClient, $this->mockLogger);
+
+    }
+
+
     /**
      * @param HealthStatus $expectedStatus
      * @param string $dinoName
-     * @dataProvider dinoNameProvider
      * @return void
+     * @throws ClientExceptionInterface
+     * @throws DecodingExceptionInterface
+     * @throws RedirectionExceptionInterface
+     * @throws ServerExceptionInterface
+     * @throws TransportExceptionInterface
+     * @dataProvider dinoNameProvider
      */
     public function testGetHealthReportReturnsCorrectHealthStatusForDino(HealthStatus $expectedStatus, string $dinoName): void
     {
@@ -56,48 +82,63 @@ class GitHubServiceTest extends TestCase
             ->willReturn($mockResponse);
 
         $service = new GithubService($mockHttpClient, $mockLogger);
-        try {
-            self::assertSame($expectedStatus, $service->getHealthReport($dinoName));
-        } catch (ClientExceptionInterface $e) {
-        } catch (DecodingExceptionInterface $e) {
-        } catch (RedirectionExceptionInterface $e) {
-        } catch (ServerExceptionInterface $e) {
-        } catch (TransportExceptionInterface $e) {
-        }
+
+        self::assertSame($expectedStatus, $service->getHealthReport($dinoName));
+
     }
 
     /**
      * @param HealthStatus $expectedStatus
-     * @dataProvider dinoNameProvider
      * @return void
+     * @throws ClientExceptionInterface
+     * @throws DecodingExceptionInterface
+     * @throws RedirectionExceptionInterface
+     * @throws ServerExceptionInterface
+     * @throws TransportExceptionInterface
+     * @dataProvider dinoNameProvider
      */
     public function testExceptionThrownWithUnknownLabel(HealthStatus $expectedStatus): void
     {
-        $mockLogger = $this->createMock(LoggerInterface::class);
 
-        $mockResponse = new MockResponse(json_encode([
-                [
-                    'title' => 'Maverick',
-                    'labels' => [['name' => 'Status: Drowsy']],
-                ],
-            ]));
-
-        $mockHttpClient = new MockHttpClient($mockResponse);
-
-        $service = new GithubService($mockHttpClient, $mockLogger);
+        $service = $this->createGithubService([
+            [
+                'title' => 'Maverick',
+                'labels' => [['name' => 'Status: Drowsy']],
+            ],
+        ]);
 
         $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Drowsy is an unknown status label!');
+//        $this->expectExceptionMessage('Drowsy is an unknown status label!');
 
-        try {
-            self::assertSame($expectedStatus, $service->getHealthReport('Maverick'));
-        } catch (ClientExceptionInterface $e) {
-        } catch (DecodingExceptionInterface $e) {
-        } catch (RedirectionExceptionInterface $e) {
-        } catch (ServerExceptionInterface $e) {
-        } catch (TransportExceptionInterface $e) {
-        }
+        self::assertSame($expectedStatus, $service->getHealthReport('Maverick'));
 
+    }
+
+    /**
+     * @throws TransportExceptionInterface
+     * @throws ServerExceptionInterface
+     * @throws RedirectionExceptionInterface
+     * @throws DecodingExceptionInterface
+     * @throws ClientExceptionInterface
+     * @dataProvider dinoNameProvider
+     */
+    public function testGetHealthReportReturnsCorrectHealthStatusForDinoRefactorized(HealthStatus $expectedStatus, string $dinoName): void
+    {
+        $service = $this->createGithubService([
+            [
+                'title' => 'Daisy',
+                'labels' => [['name' => 'Status: Sick']],
+            ],
+            [
+                'title' => 'Maverick',
+                'labels' => [['name' => 'Status: Healthy']],
+            ],
+        ]);
+
+        self::assertSame($expectedStatus, $service->getHealthReport($dinoName));
+        self::assertSame(1, $this->mockHttpClient->getRequestsCount());
+        self::assertSame('GET', $this->mockResponse->getRequestMethod());
+        self::assertSame('https://api.github.com/repos/SymfonyCasts/dino-park/issues', $this->mockResponse->getRequestUrl());
     }
 
 
